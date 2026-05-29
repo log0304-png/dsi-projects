@@ -55,7 +55,7 @@ _COL_ODD    = {"red": 1.0,   "green": 1.0,   "blue": 1.0}
 _COL_MILE   = {"red": 1.0,   "green": 0.753, "blue": 0.0}
 _COL_WHITE  = {"red": 1.0,   "green": 1.0,   "blue": 1.0}
 
-TASK_HEADERS = ["工作名稱", "工期", "開始時間", "結束時間", "前置任務", "OWNER", "完成百分比", "里程碑", "建立時間"]
+TASK_HEADERS = ["工作名稱", "工期", "開始時間", "結束時間", "前置任務", "OWNER", "完成百分比", "里程碑", "建立時間", "Done"]
 
 
 def _ensure_project_tab(project_name: str):
@@ -64,8 +64,8 @@ def _ensure_project_tab(project_name: str):
     if project_name in titles:
         ws = sh.worksheet(project_name)
         if ws.row_values(1) != TASK_HEADERS:
-            ws.update("A1:I1", [TASK_HEADERS])
-            ws.format("A1:I1", {
+            ws.update("A1:J1", [TASK_HEADERS])
+            ws.format("A1:J1", {
                 "backgroundColor": _COL_HEADER,
                 "textFormat": {"bold": True, "fontSize": 11, "foregroundColor": _COL_WHITE},
                 "horizontalAlignment": "CENTER",
@@ -73,9 +73,9 @@ def _ensure_project_tab(project_name: str):
             })
         return ws
 
-    ws = sh.add_worksheet(title=project_name, rows=500, cols=10)
-    ws.update("A1:I1", [TASK_HEADERS])
-    ws.format("A1:I1", {
+    ws = sh.add_worksheet(title=project_name, rows=500, cols=11)
+    ws.update("A1:J1", [TASK_HEADERS])
+    ws.format("A1:J1", {
         "backgroundColor": _COL_HEADER,
         "textFormat": {"bold": True, "fontSize": 11, "foregroundColor": _COL_WHITE},
         "horizontalAlignment": "CENTER",
@@ -97,12 +97,13 @@ def _write_task_row(ws, task: dict, now: str):
         task.get("percent", "0%"),
         "★ 里程碑" if is_milestone else "",
         now,
+        "",  # Done
     ]
     next_row = len(ws.col_values(1)) + 1
     if next_row < 2:
         next_row = 2
-    ws.update(f"A{next_row}:I{next_row}", [row_data])
-    row_range = f"A{next_row}:I{next_row}"
+    ws.update(f"A{next_row}:J{next_row}", [row_data])
+    row_range = f"A{next_row}:J{next_row}"
     if is_milestone:
         ws.format(row_range, {"backgroundColor": _COL_MILE, "textFormat": {"bold": True}})
     else:
@@ -138,21 +139,23 @@ def api_project_data():
                 except ValueError: return None
             ii = {k: ci(k) for k in TASK_HEADERS}
             tasks = []
-            for row in rows[1:]:
+            for row_idx, row in enumerate(rows[1:], start=2):
                 if not any(row): continue
-                def g(k):
+                def g(k, _row=row):
                     i = ii[k]
-                    return row[i] if i is not None and i < len(row) else ""
+                    return _row[i] if i is not None and i < len(_row) else ""
                 tasks.append({
-                    "task_name":   g("工作名稱"),
-                    "duration":    g("工期"),
-                    "start_date":  g("開始時間"),
-                    "finish_date": g("結束時間"),
-                    "predecessors":g("前置任務"),
-                    "owner":       g("OWNER"),
-                    "percent":     g("完成百分比"),
-                    "milestone":   g("里程碑"),
-                    "created":     g("建立時間"),
+                    "row":          row_idx,
+                    "task_name":    g("工作名稱"),
+                    "duration":     g("工期"),
+                    "start_date":   g("開始時間"),
+                    "finish_date":  g("結束時間"),
+                    "predecessors": g("前置任務"),
+                    "owner":        g("OWNER"),
+                    "percent":      g("完成百分比"),
+                    "milestone":    g("里程碑"),
+                    "created":      g("建立時間"),
+                    "done":         g("Done"),
                 })
             result.append({"project": ws.title, "tasks": tasks})
         return jsonify({"ok": True, "data": result})
@@ -182,6 +185,22 @@ def api_add_task():
         now = datetime.now(_TW).strftime("%Y-%m-%d %H:%M:%S")
         ws  = _ensure_project_tab(project)
         _write_task_row(ws, task, now)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/done_task", methods=["POST"])
+def api_done_task():
+    try:
+        body    = request.get_json(force=True)
+        project = (body.get("project") or "").strip()
+        row_num = int(body.get("row", 0))
+        if not project or row_num < 2:
+            return jsonify({"ok": False, "error": "參數不正確"}), 400
+        sh = _get_project_sheet()
+        ws = sh.worksheet(project)
+        ws.update_cell(row_num, 10, "✓")
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -240,14 +259,16 @@ body{font-family:"Microsoft JhengHei","微軟正黑體",Arial,sans-serif;backgro
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead{background:var(--panel)}
 th{text-align:left;padding:8px 14px;font-size:10px;color:var(--gray);font-weight:600;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden}
-th:nth-child(1){width:28%}
-th:nth-child(2){width:7%}
-th:nth-child(3){width:9%}
-th:nth-child(4){width:9%}
-th:nth-child(5){width:8%}
-th:nth-child(6){width:11%}
-th:nth-child(7){width:14%}
-th:nth-child(8){width:10%}
+th:nth-child(1){width:22%}
+th:nth-child(2){width:6%}
+th:nth-child(3){width:8%}
+th:nth-child(4){width:8%}
+th:nth-child(5){width:7%}
+th:nth-child(6){width:9%}
+th:nth-child(7){width:11%}
+th:nth-child(8){width:8%}
+th:nth-child(9){width:7%}
+th:nth-child(10){width:14%}
 td{padding:8px 14px;font-size:12px;border-bottom:1px solid var(--border2);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even)>td{background:var(--rowalt)}
@@ -258,6 +279,13 @@ tr:hover>td{background:var(--rowhover)}
 .pbar-wrap{background:var(--border);border-radius:2px;height:4px;width:80px;display:inline-block;vertical-align:middle}
 .pbar{height:4px;border-radius:2px}
 .pct-label{font-size:10px;color:var(--gray);margin-left:5px}
+.done-badge{display:inline-block;padding:2px 8px;border-radius:3px;background:rgba(100,220,130,.18);color:var(--green);font-size:11px;font-weight:700}
+.btn-done{background:transparent;border:1px solid var(--green);color:var(--green);padding:3px 9px;font-size:11px;border-radius:3px;cursor:pointer;font-family:inherit}
+.btn-done:hover{background:rgba(100,220,130,.15)}
+.btn-done:disabled{opacity:.4;cursor:default}
+.btn-del{background:transparent;border:1px solid var(--red);color:var(--red);padding:3px 9px;font-size:11px;border-radius:3px;cursor:pointer;font-family:inherit;margin-left:4px}
+.btn-del:hover{background:rgba(255,110,100,.12)}
+.done-row>td{opacity:.45}
 .empty{padding:40px;text-align:center;color:var(--gray)}
 .loading{padding:48px;text-align:center;color:var(--gray)}
 /* Modal */
@@ -378,7 +406,9 @@ function renderProjects(data) {
       const pct    = Math.min(100, Math.max(0, pctRaw));
       const pcolor = pct < 30 ? '#f59f00' : pct < 80 ? '#2196f3' : '#43a047';
       const isMile = t.milestone && t.milestone.includes('★');
-      return `<tr class="${isMile ? 'mile-row' : ''}">
+      const isDone = t.done === '✓';
+      const rowCls = isDone ? 'done-row' : isMile ? 'mile-row' : '';
+      return `<tr class="${rowCls}">
         <td>${isMile ? '★ ' : ''}${t.task_name||'─'}</td>
         <td>${t.duration||'─'}</td>
         <td>${t.start_date||'─'}</td>
@@ -390,8 +420,13 @@ function renderProjects(data) {
           <span class="pct-label">${pct}%</span>
         </td>
         <td style="color:var(--gray);font-size:11px">${(t.created||'').slice(0,10)||'─'}</td>
+        <td>${isDone ? '<span class="done-badge">✓ Done</span>' : '─'}</td>
+        <td>
+          <button class="btn-done" onclick="doneTask('${proj.project.replace(/'/g,"\\'")}',${t.row})" ${isDone?'disabled':''}>✓ Done</button>
+          <button class="btn-del" onclick="deleteTask('${proj.project.replace(/'/g,"\\'")}',${t.row})">✕</button>
+        </td>
       </tr>`;
-    }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--gray);padding:18px">尚無任務</td></tr>';
+    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:18px">尚無任務</td></tr>';
 
     html += `<div class="project-section">
       <div class="proj-header">
@@ -405,6 +440,7 @@ function renderProjects(data) {
           <thead><tr>
             <th>工作名稱</th><th>工期</th><th>開始</th><th>結束</th>
             <th>前置任務</th><th>OWNER</th><th>進度</th><th>建立</th>
+            <th>Done</th><th>操作</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -462,6 +498,40 @@ async function submitTask() {
     showToast('新增失敗：' + e.message, false);
   } finally {
     btn.disabled = false; btn.textContent = '新增';
+  }
+}
+
+async function doneTask(project, row) {
+  if (!confirm('確認將此任務標記為 Done？')) return;
+  try {
+    const res  = await fetch('/api/done_task', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ project, row })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    showToast('✅ 已標記為 Done');
+    loadData();
+  } catch(e) {
+    showToast('失敗：' + e.message, false);
+  }
+}
+
+async function deleteTask(project, row) {
+  if (!confirm('確認刪除此任務？')) return;
+  try {
+    const res  = await fetch('/api/delete_task', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ project, row })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    showToast('已刪除');
+    loadData();
+  } catch(e) {
+    showToast('失敗：' + e.message, false);
   }
 }
 
