@@ -225,10 +225,18 @@ body{font-family:"Microsoft JhengHei","微軟正黑體",Arial,sans-serif;backgro
 .proj-name{font-size:13px;font-weight:700;color:var(--lightgray)}
 .proj-stat{font-size:10px;color:var(--gray);margin-left:auto}
 .table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead{background:var(--panel)}
-th{text-align:left;padding:8px 14px;font-size:10px;color:var(--gray);font-weight:600;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:8px 14px;font-size:12px;border-bottom:1px solid var(--border2);vertical-align:middle}
+th{text-align:left;padding:8px 14px;font-size:10px;color:var(--gray);font-weight:600;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden}
+th:nth-child(1){width:28%}
+th:nth-child(2){width:7%}
+th:nth-child(3){width:9%}
+th:nth-child(4){width:9%}
+th:nth-child(5){width:8%}
+th:nth-child(6){width:11%}
+th:nth-child(7){width:14%}
+th:nth-child(8){width:10%}
+td{padding:8px 14px;font-size:12px;border-bottom:1px solid var(--border2);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even)>td{background:var(--rowalt)}
 tr:hover>td{background:var(--rowhover)}
