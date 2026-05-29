@@ -3,6 +3,8 @@
 import os
 import re
 import json
+import traceback
+import requests
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 
@@ -16,9 +18,13 @@ SCOPES = [
 ]
 
 PROJECT_SHEET_ID = os.environ.get("PROJECT_SHEET_ID", "1sDrlLUehorFkH_379k3f_fvv0ZmlS9-aQ-wBWOqoCx4")
+MEETING_TOKEN    = os.environ.get("MEETING_TOKEN", "")
+MEETING_SHEET_ID = "1EmtsVvGnsNg7o27WpOpbv7BA4_rlwTWOtfopN1OJAEQ"
+GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
 
 _gc          = None
 _sh_project  = None
+_sh_meeting  = None
 
 def _get_client():
     global _gc
@@ -33,6 +39,12 @@ def _get_project_sheet():
     if _sh_project is None:
         _sh_project = _get_client().open_by_key(PROJECT_SHEET_ID)
     return _sh_project
+
+def _get_meeting_sheet():
+    global _sh_meeting
+    if _sh_meeting is None:
+        _sh_meeting = _get_client().open_by_key(MEETING_SHEET_ID)
+    return _sh_meeting
 
 app = Flask(__name__)
 
@@ -466,6 +478,216 @@ loadData();
 </script>
 </body>
 </html>"""
+
+
+# ── 會議 BOT ──────────────────────────────────────
+_meeting_sessions: dict = {}
+_project_states:   dict = {}
+
+
+def _reply_meeting(reply_token, text):
+    requests.post(
+        "https://api.line.me/v2/bot/message/reply",
+        headers={"Authorization": f"Bearer {MEETING_TOKEN}", "Content-Type": "application/json"},
+        json={"replyToken": reply_token, "messages": [{"type": "text", "text": text}]},
+        timeout=10,
+    )
+
+
+def _push_to_group(group_id, text):
+    requests.post(
+        "https://api.line.me/v2/bot/message/push",
+        headers={"Authorization": f"Bearer {MEETING_TOKEN}", "Content-Type": "application/json"},
+        json={"to": group_id, "messages": [{"type": "text", "text": text}]},
+        timeout=10,
+    )
+
+
+def _get_display_name(group_id, user_id):
+    try:
+        if group_id:
+            url = f"https://api.line.me/v2/bot/group/{group_id}/member/{user_id}"
+        else:
+            url = f"https://api.line.me/v2/bot/profile/{user_id}"
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {MEETING_TOKEN}"},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("displayName", user_id)
+    except Exception:
+        pass
+    return user_id
+
+
+def _parse_task_msg(body: str) -> dict:
+    key_map = {
+        "工作名稱": "task_name",
+        "工期":     "duration",
+        "開始":     "start_date",
+        "結束":     "finish_date",
+        "前置任務": "predecessors",
+        "OWNER":    "resource",
+        "資源":     "resource",
+        "進度":     "percent",
+        "里程碑":   "milestone",
+    }
+    result = {}
+    for line in body.splitlines():
+        line = line.strip()
+        for zh_key, field in key_map.items():
+            if line.startswith(zh_key):
+                parts = re.split(r"[：:]", line, 1)
+                if len(parts) > 1:
+                    result[field] = parts[1].strip()
+                break
+    return result
+
+
+def handle_meeting(event):
+    try:
+        source      = event.get("source", {})
+        group_id    = source.get("groupId", "")
+        user_id     = source.get("userId", "")
+        reply_token = event.get("replyToken", "")
+        now         = datetime.now(_TW).strftime("%Y-%m-%d %H:%M:%S")
+
+        if event.get("message", {}).get("type") != "text":
+            return
+        raw = event["message"]["text"].strip()
+
+        def reply(text):
+            _reply_meeting(reply_token, text)
+
+        session_key = group_id if group_id else user_id
+
+        # 步驟一：#專案名稱 → 回覆表單
+        if raw.startswith("#") and "\n" not in raw:
+            project_name = raw[1:].strip()
+            if not project_name:
+                reply("請輸入專案名稱，例如：#SMD")
+                return
+            _project_states[session_key] = {"project": project_name}
+            reply(
+                f"請填寫 #{project_name} 的任務內容：\n\n"
+                f"工作名稱：\n工期：\n開始：\n結束：\n前置任務：\nOWNER：\n進度：\n里程碑："
+            )
+            return
+
+        # 步驟二：填完表單送出 → 寫入並確認
+        if session_key in _project_states:
+            project_name = _project_states.pop(session_key)["project"]
+            task = _parse_task_msg(raw)
+            if not task.get("task_name"):
+                reply("請填寫「工作名稱：」欄位")
+                return
+            ws_proj         = _ensure_project_tab(project_name)
+            _, is_milestone = _write_task_row(ws_proj, task, now)
+            label           = "★ 里程碑" if is_milestone else "任務"
+            reply(
+                f"✅ 已新增{label}\n━━━━━━━━━━━━━━\n"
+                f"專案：{project_name}\n工作：{task.get('task_name', '')}\n"
+                f"工期：{task.get('duration', '-')}\n開始：{task.get('start_date', '-')}\n"
+                f"結束：{task.get('finish_date', '-')}\nOWNER：{task.get('resource', '-')}\n"
+                f"進度：{task.get('percent', '0%')}"
+            )
+            return
+
+        # 開始會議
+        m = re.match(r"^開始會議[：:\s]*(.*)$", raw)
+        if m:
+            topic = m.group(1).strip() or "未命名會議"
+            _meeting_sessions[session_key] = {
+                "topic": topic, "messages": [], "start_time": now
+            }
+            reply(f"會議已開始\n主題：{topic}\n\n開始記錄對話，輸入「結束會議」產生會議紀錄")
+            return
+
+        # 結束會議
+        if raw == "結束會議":
+            if session_key not in _meeting_sessions:
+                reply("目前沒有進行中的會議")
+                return
+            session = _meeting_sessions.pop(session_key)
+            if not session["messages"]:
+                reply("沒有記錄到任何對話，會議紀錄未產生")
+                return
+
+            convo  = "\n".join(f"{s}: {t}" for s, t in session["messages"])
+            prompt = (
+                f"你是專業的工程專案會議記錄AI。\n"
+                f"以下是工程團隊的會議對話，主題是「{session['topic']}」：\n\n{convo}\n\n"
+                f"請從對話中提取行動事項，每個行動事項產生一筆JSON物件，放在陣列中回傳。\n"
+                f"欄位：owner, subject, status(固定Open), description, next_step, due_date(YYYY-MM-DD), priority(High/Medium/Low)\n"
+                f"只回傳JSON陣列，不要解釋。"
+            )
+
+            try:
+                from google import genai as _genai
+                from google.genai import types as _gtypes
+                gc   = _genai.Client(api_key=GEMINI_API_KEY)
+                resp = gc.models.generate_content(
+                    model="gemini-2.0-flash-lite",
+                    contents=prompt,
+                    config=_gtypes.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.2,
+                    ),
+                )
+                items = json.loads(resp.text)
+                if not isinstance(items, list):
+                    items = [items]
+            except Exception as e:
+                print(traceback.format_exc(), flush=True)
+                reply(f"會議結束，但 AI 摘要失敗：{e}")
+                return
+
+            ws       = _get_meeting_sheet().worksheet("會議記錄")
+            col_a    = ws.col_values(1)
+            next_row = max(len(col_a) + 1, 2)
+            rows_data = [
+                [item.get("owner",""), item.get("subject", session["topic"]),
+                 item.get("status","Open"), item.get("description",""),
+                 item.get("next_step",""), item.get("due_date",""), "",
+                 item.get("priority","Medium"), now]
+                for item in items
+            ]
+            ws.update(f"A{next_row}:I{next_row + len(rows_data) - 1}", rows_data)
+
+            lines = [f"會議紀錄 - {session['topic']}", f"時間：{session['start_time']}", ""]
+            for i, item in enumerate(items, 1):
+                lines.append(f"{i}. {item.get('subject','')}")
+                if item.get("owner"):     lines.append(f"   負責：{item['owner']}")
+                if item.get("next_step"): lines.append(f"   下一步：{item['next_step']}")
+                if item.get("due_date"):  lines.append(f"   截止：{item['due_date']}")
+                lines.append(f"   優先度：{item.get('priority','Medium')}")
+                lines.append("")
+            lines.append(f"共 {len(items)} 個行動事項，已寫入 Google Sheet")
+            reply("\n".join(lines))
+            return
+
+        # 記錄進行中的對話
+        if session_key in _meeting_sessions:
+            speaker = _get_display_name(group_id, user_id)
+            _meeting_sessions[session_key]["messages"].append((speaker, raw))
+
+    except Exception as e:
+        print(traceback.format_exc(), flush=True)
+        try:
+            _reply_meeting(event.get("replyToken",""), f"處理失敗：{e}")
+        except Exception:
+            pass
+
+
+@app.route("/meeting", methods=["POST"])
+def webhook_meeting():
+    events = request.json.get("events", [])
+    for event in events:
+        if event.get("type") != "message":
+            continue
+        handle_meeting(event)
+    return "OK"
 
 
 if __name__ == "__main__":
