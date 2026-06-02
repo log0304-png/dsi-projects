@@ -632,6 +632,26 @@ def handle_meeting(event):
 
         session_key = group_id if group_id else user_id
 
+        # 使用說明
+        if raw in ["使用說明", "說明", "help", "Help", "?", "？"]:
+            reply("\n".join([
+                "📖 會議BOT 使用說明",
+                "─" * 22,
+                "【新增任務】",
+                "#專案名稱",
+                "→ 依提示填寫任務內容送出",
+                "",
+                "【會議記錄】",
+                "開始會議 主題名稱",
+                "→ 開始記錄所有對話",
+                "結束會議",
+                "→ AI自動摘要行動事項",
+                "  並寫入 Google Sheet",
+                "─" * 22,
+                "傳「使用說明」可再次查看",
+            ]))
+            return
+
         # 步驟一：#專案名稱 → 回覆表單
         if raw.startswith("#") and "\n" not in raw:
             project_name = raw[1:].strip()
