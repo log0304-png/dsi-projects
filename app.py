@@ -652,6 +652,41 @@ def handle_meeting(event):
             ]))
             return
 
+        # 查行動事項（各專案未完成任務）
+        if raw == "查行動事項":
+            try:
+                sh      = _get_project_sheet()
+                pending = []
+                for ws in sh.worksheets():
+                    rows = ws.get_all_values()
+                    if len(rows) <= 1:
+                        continue
+                    for row in rows[1:]:
+                        if not any(row):
+                            continue
+                        done      = row[9] if len(row) > 9 else ""
+                        task_name = row[0] if len(row) > 0 else ""
+                        owner     = row[5] if len(row) > 5 else ""
+                        end_date  = row[3] if len(row) > 3 else ""
+                        if done == "✓" or not task_name:
+                            continue
+                        pending.append((ws.title, task_name, owner, end_date))
+                if not pending:
+                    reply("目前所有任務都已完成！")
+                    return
+                lines = [f"📋 未完成任務（{len(pending)} 筆）", ""]
+                for proj, task, owner, end in pending[:15]:
+                    lines.append(f"▸ [{proj}] {task}")
+                    if owner:    lines.append(f"  負責：{owner}")
+                    if end_date: lines.append(f"  結束：{end}")
+                    lines.append("")
+                if len(pending) > 15:
+                    lines.append(f"…還有 {len(pending)-15} 筆，請至網頁查看")
+                reply("\n".join(lines).strip())
+            except Exception as e:
+                reply(f"查詢失敗：{e}")
+            return
+
         # 步驟一：#專案名稱 → 回覆表單
         if raw.startswith("#") and "\n" not in raw:
             project_name = raw[1:].strip()
