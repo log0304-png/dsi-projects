@@ -285,7 +285,7 @@ tr:hover>td{background:var(--rowhover)}
 .btn-done:disabled{opacity:.4;cursor:default}
 .btn-del{background:transparent;border:1px solid var(--red);color:var(--red);padding:3px 9px;font-size:11px;border-radius:3px;cursor:pointer;font-family:inherit;margin-left:4px}
 .btn-del:hover{background:rgba(255,110,100,.12)}
-.done-row>td{opacity:.5;background:rgba(50,100,160,0.35)!important}
+.done-row>td{opacity:.6;background:rgba(40,160,80,0.25)!important}
 .empty{padding:40px;text-align:center;color:var(--gray)}
 .loading{padding:48px;text-align:center;color:var(--gray)}
 /* Modal */
