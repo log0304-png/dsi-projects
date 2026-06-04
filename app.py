@@ -155,7 +155,7 @@ def api_project_data():
                     "percent":      g("完成百分比"),
                     "milestone":    g("里程碑"),
                     "created":      g("建立時間"),
-                    "done":         g("Done"),
+                    "done":         row[9] if len(row) > 9 else g("Done"),
                 })
             result.append({"project": ws.title, "tasks": tasks})
         return jsonify({"ok": True, "data": result})
