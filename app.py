@@ -22,9 +22,18 @@ MEETING_TOKEN    = os.environ.get("MEETING_TOKEN", "")
 MEETING_SHEET_ID = "1EmtsVvGnsNg7o27WpOpbv7BA4_rlwTWOtfopN1OJAEQ"
 GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
 
+EXPENSE_SHEET_ID = "1yf62_kTCfEPt0hYg5IoGsW7_EDddGG2Ft5yiisqLPhM"
+EXPENSE_HEADERS  = ["摘要", "項目", "發票號碼", "請款人", "日期",
+                    "研發相關", "加油費", "交通費", "房租", "行銷",
+                    "郵寄費", "旅費", "餐費", "工程", "辦公室補給", "備註", "發票圖片"]
+EXPENSE_COLS     = ["研發相關", "加油費", "交通費", "房租", "行銷",
+                    "郵寄費", "旅費", "餐費", "工程", "辦公室補給"]
+IMGBB_KEY        = os.environ.get("IMGBB_API_KEY", "2121c99497653d5d8b41486ed00aeb42")
+
 _gc          = None
 _sh_project  = None
 _sh_meeting  = None
+_sh_expense  = None
 
 def _get_client():
     global _gc
@@ -45,6 +54,122 @@ def _get_meeting_sheet():
     if _sh_meeting is None:
         _sh_meeting = _get_client().open_by_key(MEETING_SHEET_ID)
     return _sh_meeting
+
+def _get_expense_sheet():
+    global _sh_expense
+    if _sh_expense is None:
+        _sh_expense = _get_client().open_by_key(EXPENSE_SHEET_ID)
+    return _sh_expense
+
+def _get_user_tab(requester: str):
+    sh       = _get_expense_sheet()
+    existing = [ws.title for ws in sh.worksheets()]
+    if requester not in existing:
+        ws = sh.add_worksheet(title=requester, rows=1000, cols=17)
+        ws.update("A1:Q1", [EXPENSE_HEADERS])
+        ws.format("A1:Q1", {
+            "backgroundColor": {"red": 0.122, "green": 0.306, "blue": 0.475},
+            "textFormat": {
+                "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                "bold": True,
+            },
+            "horizontalAlignment": "CENTER",
+        })
+        ws.freeze(rows=1)
+    return sh.worksheet(requester)
+
+def _upload_to_imgbb(image_bytes: bytes, filename: str) -> str:
+    import base64
+    b64  = base64.b64encode(image_bytes).decode("utf-8")
+    resp = requests.post(
+        "https://api.imgbb.com/1/upload",
+        data={"key": IMGBB_KEY, "image": b64, "name": filename},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    url = resp.json()["data"]["url"]
+    return f'=IMAGE("{url}")'
+
+def _analyze_invoice(image_bytes: bytes) -> dict:
+    from google import genai as _genai
+    from google.genai import types as _gt
+    client   = _genai.Client(api_key=GEMINI_API_KEY)
+    col_list = "、".join(EXPENSE_COLS)
+    prompt = (
+        "你是台灣公司請款AI。分析這張發票或收據圖片，只回傳JSON，不要解釋。\n"
+        f"expense_col 必須從以下選一個：{col_list}\n"
+        "{\n"
+        '  "date": "YYYY-MM-DD（發票日期，若無則今天）",\n'
+        '  "invoice_number": "發票號碼（若無則空字串）",\n'
+        '  "amount": 金額數字（整數，台幣）,\n'
+        '  "items": "品項描述（簡短）",\n'
+        '  "expense_col": "費用欄位",\n'
+        '  "summary": "摘要（一句話）",\n'
+        '  "notes": "備註（若有特殊說明）"\n'
+        "}"
+    )
+    image_part = _gt.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+    resp = client.models.generate_content(
+        model="gemini-2.0-flash-lite",
+        contents=[prompt, image_part],
+        config=_gt.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.1,
+        ),
+    )
+    return json.loads(resp.text)
+
+def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_token: str):
+    _TW_now = datetime.now(_TW)
+    try:
+        img_resp = requests.get(
+            f"https://api-data.line.me/v2/bot/message/{message_id}/content",
+            headers={"Authorization": f"Bearer {MEETING_TOKEN}"},
+            timeout=15,
+        )
+        if img_resp.status_code != 200:
+            _reply_meeting(reply_token, "⚠️ 無法取得圖片，請重試。")
+            return
+
+        image_bytes = img_resp.content
+        data        = _analyze_invoice(image_bytes)
+        requester   = _get_display_name(group_id, user_id)
+        expense_col = data.get("expense_col", "")
+        if expense_col not in EXPENSE_COLS:
+            expense_col = EXPENSE_COLS[0]
+
+        filename      = f"invoice_{_TW_now.strftime('%Y%m%d_%H%M%S')}_{user_id[:6]}.jpg"
+        image_formula = _upload_to_imgbb(image_bytes, filename)
+
+        row = [""] * 17
+        row[0]  = data.get("summary", "")
+        row[1]  = data.get("items", "")
+        row[2]  = data.get("invoice_number", "")
+        row[3]  = requester
+        row[4]  = data.get("date", _TW_now.strftime("%Y-%m-%d"))
+        col_idx = EXPENSE_HEADERS.index(expense_col)
+        row[col_idx] = data.get("amount", "")
+        row[15] = data.get("notes", "")
+        row[16] = image_formula
+
+        ws = _get_user_tab(requester)
+        ws.append_row(row, value_input_option="USER_ENTERED")
+
+        _reply_meeting(reply_token, (
+            f"✅ 發票已記錄\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"請款人：{requester}\n"
+            f"日　期：{row[4]}\n"
+            f"發票號：{row[2] or '─'}\n"
+            f"品　項：{row[1]}\n"
+            f"金　額：NT$ {data.get('amount', '─')}\n"
+            f"類　別：{expense_col}\n"
+            f"圖　片：已同步至 Sheet"
+        ))
+
+    except Exception:
+        print(traceback.format_exc(), flush=True)
+        _reply_meeting(reply_token, "⚠️ 發票辨識失敗，請確認圖片清晰後重試。")
 
 app = Flask(__name__)
 
@@ -811,7 +936,16 @@ def webhook_meeting():
     for event in events:
         if event.get("type") != "message":
             continue
-        handle_meeting(event)
+        source      = event.get("source", {})
+        user_id     = source.get("userId", "")
+        group_id    = source.get("groupId", "")
+        reply_token = event.get("replyToken", "")
+        msg_type    = event["message"].get("type")
+
+        if msg_type == "image":
+            handle_invoice_image(user_id, group_id, event["message"]["id"], reply_token)
+        elif msg_type == "text":
+            handle_meeting(event)
     return "OK"
 
 
