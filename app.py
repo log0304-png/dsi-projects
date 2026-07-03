@@ -88,7 +88,7 @@ def _upload_to_imgbb(image_bytes: bytes, filename: str) -> str:
     )
     resp.raise_for_status()
     url = resp.json()["data"]["url"]
-    return f'=IMAGE("{url}")'
+    return f'=HYPERLINK("{url}","📷 查看發票")'
 
 def _analyze_invoice(image_bytes: bytes) -> dict:
     from google import genai as _genai
