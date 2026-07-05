@@ -757,6 +757,28 @@ def handle_meeting(event):
 
         session_key = group_id if group_id else user_id
 
+        # 喚醒BOT
+        if raw in ["喚醒BOT", "喚醒", "ping", "你好"]:
+            now_s = datetime.now(_TW).strftime("%Y-%m-%d %H:%M")
+            reply(f"✅ BOT 運作正常！\n目前時間：{now_s}\n\n有任何問題請直接輸入指令。")
+            return
+
+        # 上傳發票
+        if raw in ["上傳發票", "發票"]:
+            reply("\n".join([
+                "🧾 發票上傳說明",
+                "─" * 20,
+                "請直接傳送發票照片",
+                "可一次傳送多張，系統會逐一登記",
+                "",
+                "📌 注意事項：",
+                "・確保發票號碼清晰可見",
+                "・支援紙本發票及電子發票",
+                "・上傳後稍候系統自動辨識",
+                "─" * 20,
+            ]))
+            return
+
         # 使用說明
         if raw in ["使用說明", "說明", "help", "Help", "?", "？"]:
             reply("\n".join([

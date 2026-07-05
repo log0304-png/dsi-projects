@@ -16,12 +16,14 @@ RICH_MENU = {
     "name": "會議Bot選單",
     "chatBarText": "快速選單",
     "areas": [
-        {"bounds": {"x": 0,    "y": 0,   "width": 833, "height": 421}, "action": {"type": "message", "text": "使用說明"}},
-        {"bounds": {"x": 833,  "y": 0,   "width": 833, "height": 421}, "action": {"type": "message", "text": "開始會議"}},
-        {"bounds": {"x": 1666, "y": 0,   "width": 834, "height": 421}, "action": {"type": "message", "text": "結束會議"}},
-        {"bounds": {"x": 0,    "y": 421, "width": 833, "height": 422}, "action": {"type": "message", "text": "#"}},
-        {"bounds": {"x": 833,  "y": 421, "width": 833, "height": 422}, "action": {"type": "message", "text": "查行動事項"}},
-        {"bounds": {"x": 1666, "y": 421, "width": 834, "height": 422}, "action": {"type": "uri", "uri": "https://dsi-projects.onrender.com"}},
+        {"bounds": {"x": 0,    "y": 0,   "width": 625, "height": 421}, "action": {"type": "message", "text": "使用說明"}},
+        {"bounds": {"x": 625,  "y": 0,   "width": 625, "height": 421}, "action": {"type": "message", "text": "開始會議"}},
+        {"bounds": {"x": 1250, "y": 0,   "width": 625, "height": 421}, "action": {"type": "message", "text": "結束會議"}},
+        {"bounds": {"x": 1875, "y": 0,   "width": 625, "height": 421}, "action": {"type": "message", "text": "喚醒BOT"}},
+        {"bounds": {"x": 0,    "y": 421, "width": 625, "height": 422}, "action": {"type": "message", "text": "#"}},
+        {"bounds": {"x": 625,  "y": 421, "width": 625, "height": 422}, "action": {"type": "message", "text": "查行動事項"}},
+        {"bounds": {"x": 1250, "y": 421, "width": 625, "height": 422}, "action": {"type": "uri",     "uri": "https://dsi-projects.onrender.com"}},
+        {"bounds": {"x": 1875, "y": 421, "width": 625, "height": 422}, "action": {"type": "message", "text": "上傳發票"}},
     ],
 }
 
