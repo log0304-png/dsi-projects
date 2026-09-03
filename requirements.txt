@@ -2,5 +2,6 @@ flask
 gunicorn
 gspread
 google-auth
+google-api-python-client
 google-genai
 requests

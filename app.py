@@ -10,6 +10,8 @@ from flask import Flask, request, jsonify
 
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaInMemoryUpload
 
 _TW    = timezone(timedelta(hours=8))
 SCOPES = [
@@ -28,20 +30,32 @@ EXPENSE_HEADERS  = ["摘要", "項目", "發票號碼", "請款人", "日期",
                     "郵寄費", "旅費", "餐費", "工程", "辦公室補給", "備註", "發票圖片"]
 EXPENSE_COLS     = ["研發相關", "加油費", "交通費", "房租", "行銷",
                     "郵寄費", "旅費", "餐費", "工程", "辦公室補給"]
-IMGBB_KEY        = os.environ.get("IMGBB_API_KEY", "2121c99497653d5d8b41486ed00aeb42")
 
-_gc          = None
-_sh_project  = None
-_sh_meeting  = None
-_sh_expense  = None
+_creds          = None
+_gc             = None
+_drive_service  = None
+_sh_project     = None
+_sh_meeting     = None
+_sh_expense     = None
+
+def _get_credentials():
+    global _creds
+    if _creds is None:
+        creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+        _creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+    return _creds
 
 def _get_client():
     global _gc
     if _gc is None:
-        creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
-        creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
-        _gc = gspread.authorize(creds)
+        _gc = gspread.authorize(_get_credentials())
     return _gc
+
+def _get_drive_service():
+    global _drive_service
+    if _drive_service is None:
+        _drive_service = build("drive", "v3", credentials=_get_credentials())
+    return _drive_service
 
 def _get_project_sheet():
     global _sh_project
@@ -78,18 +92,20 @@ def _get_user_tab(requester: str):
         ws.freeze(rows=1)
     return sh.worksheet(requester)
 
-def _upload_to_imgbb(image_bytes: bytes, filename: str) -> str:
-    import base64
-    b64  = base64.b64encode(image_bytes).decode("utf-8")
-    resp = requests.post(
-        "https://api.imgbb.com/1/upload",
-        data={"key": IMGBB_KEY, "image": b64, "name": filename},
-        timeout=30,
-    )
-    if resp.status_code != 200:
-        print(f"imgbb upload failed: {resp.status_code} {resp.text}", flush=True)
-    resp.raise_for_status()
-    url = resp.json()["data"]["url"]
+def _upload_to_drive(image_bytes: bytes, filename: str) -> str:
+    service = _get_drive_service()
+    media   = MediaInMemoryUpload(image_bytes, mimetype="image/jpeg")
+    file    = service.files().create(
+        body={"name": filename},
+        media_body=media,
+        fields="id",
+    ).execute()
+    file_id = file["id"]
+    service.permissions().create(
+        fileId=file_id,
+        body={"role": "reader", "type": "anyone"},
+    ).execute()
+    url = f"https://drive.google.com/file/d/{file_id}/view"
     return f'=HYPERLINK("{url}","📷 查看發票")'
 
 def _analyze_invoice(image_bytes: bytes) -> dict:
@@ -141,7 +157,7 @@ def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_tok
             expense_col = EXPENSE_COLS[0]
 
         filename      = f"invoice_{_TW_now.strftime('%Y%m%d_%H%M%S')}_{user_id[:6]}.jpg"
-        image_formula = _upload_to_imgbb(image_bytes, filename)
+        image_formula = _upload_to_drive(image_bytes, filename)
 
         row = [""] * 17
         row[0]  = data.get("summary", "")
