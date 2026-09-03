@@ -175,6 +175,18 @@ def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_tok
 
 app = Flask(__name__)
 
+@app.route("/debug/imgbb-test")
+def _debug_imgbb_test():
+    if request.args.get("token") != MEETING_TOKEN:
+        return "forbidden", 403
+    test_png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGNgAAACAAFVv69+AAAAAElFTkSuQmCC"
+    resp = requests.post(
+        "https://api.imgbb.com/1/upload",
+        data={"key": IMGBB_KEY, "image": test_png_b64, "name": "debugtest.png"},
+        timeout=30,
+    )
+    return jsonify({"status": resp.status_code, "body": resp.text})
+
 # ── 色彩常數 ──────────────────────────────────────────
 _COL_HEADER = {"red": 0.122, "green": 0.306, "blue": 0.475}
 _COL_EVEN   = {"red": 0.863, "green": 0.902, "blue": 0.945}
