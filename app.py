@@ -86,6 +86,8 @@ def _upload_to_imgbb(image_bytes: bytes, filename: str) -> str:
         data={"key": IMGBB_KEY, "image": b64, "name": filename},
         timeout=30,
     )
+    if resp.status_code != 200:
+        print(f"imgbb upload failed: {resp.status_code} {resp.text}", flush=True)
     resp.raise_for_status()
     url = resp.json()["data"]["url"]
     return f'=HYPERLINK("{url}","📷 查看發票")'
