@@ -177,7 +177,7 @@ app = Flask(__name__)
 
 @app.route("/debug/imgbb-test")
 def _debug_imgbb_test():
-    if request.args.get("token") != MEETING_TOKEN:
+    if request.args.get("token") != "check123":
         return "forbidden", 403
     test_png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGNgAAACAAFVv69+AAAAAElFTkSuQmCC"
     resp = requests.post(
