@@ -132,11 +132,12 @@ def _analyze_invoice(image_bytes: bytes) -> dict:
         '  "notes": "備註（若有特殊說明）"\n'
         "}"
     )
-    image_part = _gt.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-    for attempt in range(2):
+    image_part  = _gt.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+    models_try  = ["gemini-flash-latest", "gemini-flash-lite-latest"]
+    for i, model_name in enumerate(models_try):
         try:
             resp = client.models.generate_content(
-                model="gemini-flash-latest",
+                model=model_name,
                 contents=[prompt, image_part],
                 config=_gt.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -145,9 +146,9 @@ def _analyze_invoice(image_bytes: bytes) -> dict:
             )
             return json.loads(resp.text)
         except _genai_errors.ServerError:
-            if attempt == 1:
+            if i == len(models_try) - 1:
                 raise
-            print("gemini transient error, retrying once", flush=True)
+            print(f"gemini {model_name} unavailable, falling back to {models_try[i+1]}", flush=True)
             time.sleep(2)
 
 def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_token: str):
