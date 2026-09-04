@@ -132,7 +132,7 @@ def _analyze_invoice(image_bytes: bytes) -> dict:
     )
     image_part = _gt.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
     resp = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model="gemini-flash-latest",
         contents=[prompt, image_part],
         config=_gt.GenerateContentConfig(
             response_mime_type="application/json",
@@ -194,20 +194,6 @@ def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_tok
         _reply_meeting(reply_token, "⚠️ 發票辨識失敗，請確認圖片清晰後重試。")
 
 app = Flask(__name__)
-
-@app.route("/debug/gemini-models")
-def _debug_gemini_models():
-    if request.args.get("token") != "check123":
-        return "forbidden", 403
-    from google import genai as _genai
-    client = _genai.Client(api_key=GEMINI_API_KEY)
-    result = []
-    for m in client.models.list():
-        result.append({
-            "name": getattr(m, "name", None),
-            "supported_actions": getattr(m, "supported_actions", None),
-        })
-    return jsonify(result)
 
 # ── 色彩常數 ──────────────────────────────────────────
 _COL_HEADER = {"red": 0.122, "green": 0.306, "blue": 0.475}
