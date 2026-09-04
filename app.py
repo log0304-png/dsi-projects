@@ -206,6 +206,20 @@ def _debug_drive_check():
     except Exception as e:
         return jsonify({"ok": False, "drive_folder_id_used": DRIVE_FOLDER_ID, "error": str(e)})
 
+@app.route("/debug/drive-upload-test")
+def _debug_drive_upload_test():
+    if request.args.get("token") != "check123":
+        return "forbidden", 403
+    import base64
+    test_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGNgAAACAAFVv69+AAAAAElFTkSuQmCC"
+    )
+    try:
+        formula = _upload_to_drive(test_png, "debug_test.png")
+        return jsonify({"ok": True, "formula": formula})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
 # ── 色彩常數 ──────────────────────────────────────────
 _COL_HEADER = {"red": 0.122, "green": 0.306, "blue": 0.475}
 _COL_EVEN   = {"red": 0.863, "green": 0.902, "blue": 0.945}
