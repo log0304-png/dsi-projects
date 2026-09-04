@@ -115,7 +115,7 @@ def _upload_to_drive(image_bytes: bytes, filename: str) -> str:
 def _analyze_invoice(image_bytes: bytes) -> dict:
     from google import genai as _genai
     from google.genai import types as _gt
-    client   = _genai.Client(api_key=GEMINI_API_KEY)
+    client   = _genai.Client(api_key=GEMINI_API_KEY, http_options=_gt.HttpOptions(timeout=30_000))
     col_list = "、".join(EXPENSE_COLS)
     prompt = (
         "你是台灣公司請款AI。分析這張發票或收據圖片，只回傳JSON，不要解釋。\n"
@@ -194,6 +194,20 @@ def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_tok
         _reply_meeting(reply_token, "⚠️ 發票辨識失敗，請確認圖片清晰後重試。")
 
 app = Flask(__name__)
+
+@app.route("/debug/gemini-models")
+def _debug_gemini_models():
+    if request.args.get("token") != "check123":
+        return "forbidden", 403
+    from google import genai as _genai
+    client = _genai.Client(api_key=GEMINI_API_KEY)
+    result = []
+    for m in client.models.list():
+        result.append({
+            "name": getattr(m, "name", None),
+            "supported_actions": getattr(m, "supported_actions", None),
+        })
+    return jsonify(result)
 
 # ── 色彩常數 ──────────────────────────────────────────
 _COL_HEADER = {"red": 0.122, "green": 0.306, "blue": 0.475}
