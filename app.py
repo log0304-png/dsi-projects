@@ -195,6 +195,17 @@ def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_tok
 
 app = Flask(__name__)
 
+@app.route("/debug/drive-check")
+def _debug_drive_check():
+    if request.args.get("token") != "check123":
+        return "forbidden", 403
+    service = _get_drive_service()
+    try:
+        info = service.drives().get(driveId=DRIVE_FOLDER_ID, fields="id,name").execute()
+        return jsonify({"ok": True, "drive_folder_id_used": DRIVE_FOLDER_ID, "drive": info})
+    except Exception as e:
+        return jsonify({"ok": False, "drive_folder_id_used": DRIVE_FOLDER_ID, "error": str(e)})
+
 # ── 色彩常數 ──────────────────────────────────────────
 _COL_HEADER = {"red": 0.122, "green": 0.306, "blue": 0.475}
 _COL_EVEN   = {"red": 0.863, "green": 0.902, "blue": 0.945}
