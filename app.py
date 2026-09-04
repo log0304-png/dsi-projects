@@ -3,6 +3,7 @@
 import os
 import re
 import json
+import time
 import traceback
 import requests
 from datetime import datetime, timezone, timedelta
@@ -115,6 +116,7 @@ def _upload_to_drive(image_bytes: bytes, filename: str) -> str:
 def _analyze_invoice(image_bytes: bytes) -> dict:
     from google import genai as _genai
     from google.genai import types as _gt
+    from google.genai import errors as _genai_errors
     client   = _genai.Client(api_key=GEMINI_API_KEY, http_options=_gt.HttpOptions(timeout=30_000))
     col_list = "、".join(EXPENSE_COLS)
     prompt = (
@@ -131,15 +133,22 @@ def _analyze_invoice(image_bytes: bytes) -> dict:
         "}"
     )
     image_part = _gt.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-    resp = client.models.generate_content(
-        model="gemini-flash-latest",
-        contents=[prompt, image_part],
-        config=_gt.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.1,
-        ),
-    )
-    return json.loads(resp.text)
+    for attempt in range(2):
+        try:
+            resp = client.models.generate_content(
+                model="gemini-flash-latest",
+                contents=[prompt, image_part],
+                config=_gt.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                ),
+            )
+            return json.loads(resp.text)
+        except _genai_errors.ServerError:
+            if attempt == 1:
+                raise
+            print("gemini transient error, retrying once", flush=True)
+            time.sleep(2)
 
 def handle_invoice_image(user_id: str, group_id: str, message_id: str, reply_token: str):
     _TW_now = datetime.now(_TW)
