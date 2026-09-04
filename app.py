@@ -31,6 +31,8 @@ EXPENSE_HEADERS  = ["摘要", "項目", "發票號碼", "請款人", "日期",
 EXPENSE_COLS     = ["研發相關", "加油費", "交通費", "房租", "行銷",
                     "郵寄費", "旅費", "餐費", "工程", "辦公室補給"]
 
+DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID", "")
+
 _creds          = None
 _gc             = None
 _drive_service  = None
@@ -96,14 +98,16 @@ def _upload_to_drive(image_bytes: bytes, filename: str) -> str:
     service = _get_drive_service()
     media   = MediaInMemoryUpload(image_bytes, mimetype="image/jpeg")
     file    = service.files().create(
-        body={"name": filename},
+        body={"name": filename, "parents": [DRIVE_FOLDER_ID]},
         media_body=media,
         fields="id",
+        supportsAllDrives=True,
     ).execute()
     file_id = file["id"]
     service.permissions().create(
         fileId=file_id,
         body={"role": "reader", "type": "anyone"},
+        supportsAllDrives=True,
     ).execute()
     url = f"https://drive.google.com/file/d/{file_id}/view"
     return f'=HYPERLINK("{url}","📷 查看發票")'
