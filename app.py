@@ -1003,5 +1003,15 @@ def webhook_meeting():
     return "OK"
 
 
+# ── 發票請款 PWA（獨立模組；載入失敗不影響 LINE BOT）──────────
+try:
+    from invoice_pwa import bp as _invoice_pwa_bp
+    app.register_blueprint(_invoice_pwa_bp)
+    print("invoice_pwa blueprint registered", flush=True)
+except Exception:
+    print("invoice_pwa 載入失敗（LINE BOT 不受影響）:", flush=True)
+    traceback.print_exc()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5003, debug=False)
