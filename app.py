@@ -857,7 +857,7 @@ def handle_meeting(event):
                 for proj, task, owner, end in pending[:15]:
                     lines.append(f"▸ [{proj}] {task}")
                     if owner:    lines.append(f"  負責：{owner}")
-                    if end_date: lines.append(f"  結束：{end}")
+                    if end:      lines.append(f"  結束：{end}")
                     lines.append("")
                 if len(pending) > 15:
                     lines.append(f"…還有 {len(pending)-15} 筆，請至網頁查看")
@@ -930,21 +930,32 @@ def handle_meeting(event):
             try:
                 from google import genai as _genai
                 from google.genai import types as _gtypes
-                gc   = _genai.Client(api_key=GEMINI_API_KEY)
-                resp = gc.models.generate_content(
-                    model="gemini-2.0-flash-lite",
-                    contents=prompt,
-                    config=_gtypes.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.2,
-                    ),
-                )
+                gc = _genai.Client(api_key=GEMINI_API_KEY, http_options=_gtypes.HttpOptions(timeout=30_000))
+                # 與發票辨識相同：主模型忙線或不可用時改用 lite（舊的 gemini-2.0-flash-lite 已不建議使用）
+                models_try = ["gemini-flash-latest", "gemini-flash-lite-latest"]
+                for i, model_name in enumerate(models_try):
+                    try:
+                        resp = gc.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                            config=_gtypes.GenerateContentConfig(
+                                response_mime_type="application/json",
+                                temperature=0.2,
+                            ),
+                        )
+                        break
+                    except Exception:
+                        if i == len(models_try) - 1:
+                            raise
+                        print(f"gemini {model_name} failed, falling back to {models_try[i+1]}", flush=True)
+                        time.sleep(2)
                 items = json.loads(resp.text)
                 if not isinstance(items, list):
                     items = [items]
             except Exception as e:
                 print(traceback.format_exc(), flush=True)
-                reply(f"會議結束，但 AI 摘要失敗：{e}")
+                _meeting_sessions[session_key] = session   # 保留對話，讓使用者可以重試
+                reply(f"AI 摘要失敗：{e}\n\n會議對話仍保留中，請稍後再輸入「結束會議」重試。")
                 return
 
             ws       = _get_meeting_sheet().worksheet("會議記錄")
